@@ -1,0 +1,275 @@
+---
+title: "HW4"
+output: pdf_document
+---
+Question 1 Preparation Codes
+```{r}
+
+library(ISLR)
+library(boot)
+library(margins)
+library(glmnet)
+library(dplyr)
+library(tidyr)
+
+set.seed(317)
+getwd()
+setwd("/Users/nishengwenxin/Desktop")
+train = read.csv("gss_train.csv")%>%
+  na.omit
+
+test = read.csv("gss_test.csv")%>%
+  na.omit
+```
+# Question 1
+
+Find the optimal degree d.
+
+```{r}
+seed = 317
+cv.MSE<- rep(NA, 10)
+for (i in 1:10) {
+    glm.fit <- glm(egalit_scale ~ poly(income06, i), data = train)
+    cv.MSE[i] <- cv.glm(train, glm.fit, K=10)$delta[1]}
+
+plot( x = 1:10, y = cv.MSE, xlab = "power of income", ylab = "10-fold CV error", 
+      main = 'Choosing the optimal degree d (1.a)',
+      type = "b", pch = 19, lwd = 2, bty = "n", 
+      ylim = c( min(cv.MSE) - sd(cv.MSE), max(cv.MSE) + sd(cv.MSE) ) )
+
+points( x = which.min(cv.MSE), y = min(cv.MSE),
+        col = "red", pch = "X", cex = 1.5 )
+
+```
+
+From diagram 1.a, we can see that the the relationship between the responsible variable $Y_{egalit_scale}$ and the predictive variable $X_{income06}$ in the gss-training data set is best modeled by the polynomial regression of degree 2. Equivalently, we get the optimal model with the expression: $$Y= \beta_0 + \beta_1 X +\beta_2 X^2 + \epsilon $$
+
+It's worth to notice that $d=2$ is an acceptable value because generally, it is unusual to use d greater than 3 or 4 because for large values of d, the polynomial curve can become overly flexible and can take on some very strange shapes.
+
+The diagram below (diagram 1.b) shows the resulting polynomial fit to the data and the AME (diagram 1.c)
+```{r}
+range.income06 <- range(train$income06)
+income06.grid <- seq(from = range.income06[1], to = range.income06[2])
+
+fit <- lm(egalit_scale ~ stats::poly(income06, 2), data = train)
+preds <- predict(fit, newdata = list(income06 = income06.grid))
+plot(egalit_scale ~ income06, 
+     main = 'The polynomial fit with the optimal degree (1.b)',
+     ylab = 'Predicted egalitarian scale ',
+     data = train, col = "blue")
+lines(income06.grid, preds, col = "red", lwd = 2)
+
+cplot(fit,"income06",what = "effect",
+      main= "AME for income06 (1.c)")
+```
+
+
+
+# Question 2
+Choose the optimal number of cuts. 
+```{r}
+cv.MSE <- rep(NA, 10)
+# for each cut perform 10-fold cross-validation
+for (i in 2:10) {
+  train$income06.cut <- cut(train$income06, i)
+  lm.fit <-  glm(egalit_scale ~ income06.cut, data = train)
+  cv.MSE[i] <-  cv.glm(train, lm.fit, K = 10)$delta[1]
+}
+  plot(2:10, cv.MSE[-1], xlab = "Number of cuts", ylab = "10-fold CV Error",
+       main = 'Choosing the optimal number of cuts (2.a)',
+     type = "b", pch = 19, lwd = 2, bty ="n")
+
+  points( x = which.min(cv.MSE), y = min( cv.MSE, na.rm = TRUE), col = "red", pch = "X", cex = 1.5 )
+
+```
+ 
+ Diagram 2.a shows that the test error is minimized when the number of cuts equals 4. Equivalently, we breaks X (income06) into 4 distinctive bins and pick a different constant for each of these 4 bins. Since there exists dummy varaibles, we in fact get 4+1 = 5 distinctive regions. The mathematical expression for this model is $$Y=\beta_0 + \beta_1 C_1(X) + \beta_2 C_2(X) + ...+\beta_4 C_4(X) + \epsilon$$
+
+The diagram below (diagram 2.b) shows the resulting fit with the 4 number of cuts.
+
+```{r}
+
+fit  <- glm(egalit_scale~ cut(income06, 4), data = train)
+preds <- predict(fit, data.frame(income06 = income06.grid))
+
+plot(egalit_scale ~ income06, data = train, col = "blue",
+     main = 'The step function with the optimal number of cuts (2.b)',
+     ylab = 'Predicted egalitarian scale ')
+lines(income06.grid, preds, col = "red", lwd = 2)
+
+```
+
+# Question 3 
+
+Select the optimal number of degrees of freedom
+
+
+```{r}
+library(splines)
+set.seed(317)
+cv.MSE <- rep(NA, 10)
+for (i in 3:10) {
+    fit <- glm(egalit_scale ~ ns(income06, df = i), data = train)
+    cv.MSE[i] <- cv.glm(train, fit, K = 10)$delta[1]
+}
+
+plot(3:10, cv.MSE[-c(1, 2)], xlab = "Degrees of freedom", ylab = "10-fold CV error", 
+     main = 'Choosing the optimal degree of freedom (3.a)',type = "l")
+d.min <- which.min(cv.MSE)
+points(which.min(cv.MSE), cv.MSE[which.min(cv.MSE)], col = "red", cex = 2, pch = 20)
+```
+
+
+
+Diagram 3.a shows that the test error is minimized when the degree of freedom equals 6. This spline model is a continuous degree-6 polynomial with continuity in
+derivatives up to degree 5 at each knot. In addition, since it's a natural spline, the function is linear at the tail, in order to combat the danger of high variance at the outer range of the predictors.
+
+The diagram below (diagram 3.b) shows the resulting fit with the 6 df.
+
+```{r}
+
+fit <- glm(egalit_scale ~ ns(income06, df = 6), data = train)
+preds <- predict(fit, data.frame(income06 = income06.grid))
+
+plot(egalit_scale ~ income06, data = train, col = "blue",
+     ylab = 'Predicted egalitarian scale ',
+     main = 'Natural spline with the optimal degree of freedom (3.b)')
+lines(income06.grid, preds, col = "red", lwd = 2)
+
+```
+
+# Question 4
+
+## 4.a Linear Regression
+```{r}
+library(caret)
+
+train = read.csv("gss_train.csv")
+train.num = train %>% select(authoritarianism,childs,con_govt,egalit_scale,
+                              income06,science_quiz,sibs,social_connect,
+                              tolerance,tvhours,wordsum)
+train.num1 = train%>%
+    mutate_if(is.numeric, c) %>%
+    mutate_if(is.numeric, scale) %>%
+    mutate_if(is.matrix, as.numeric)
+
+
+preprocessParams <- preProcess(select_if(train, is.numeric), 
+                               method=c("center", "scale"))
+
+train_trans <- predict(preprocessParams, select_if(train, is.numeric))
+test = read.csv("gss_test.csv")
+test.num = test %>% select(authoritarianism,childs,con_govt,egalit_scale,
+                              income06,science_quiz,sibs,social_connect,
+                              tolerance,tvhours,wordsum)
+
+
+lm.fit=lm(egalit_scale~.,data=train.num)
+
+pred<-predict(lm.fit,test.num)
+print(lm.fit)
+cat('MSE Value:', mean((pred-test$egalit_scale)^2))
+```
+
+```{r}
+
+train.mat <- model.matrix(egalit_scale ~ ., data = train.num)
+test.mat <- model.matrix(egalit_scale ~ ., data = test.num)
+for (i in seq(0, 1, .1))
+{
+  seed = 828
+  cv.out <- cv.glmnet (train.mat,train$egalit_scale,alpha = i)
+  bestlam <- cv.out$lambda.min
+  model <- glmnet(train.mat,train$egalit_scale,alpha=1,
+                  lambda=bestlam)
+  pred <- predict(model,s = bestlam ,newx = test.mat)
+  MSE <- mean((pred-test$egalit_scale)^2)
+  cat('lambda:',bestlam,'alpha:',i,'MSE:',MSE,"\n")
+}
+```
+Therefore，the optimal model occurs where alpha is 0.4
+
+```{r}
+cv.out <- cv.glmnet (train.mat,train$egalit_scale,alpha = 0.4)
+bestlam <- cv.out$lambda.min
+net.model <- glmnet(train.mat,train$egalit_scale,alpha=1,
+                  lambda=bestlam)
+pred <- predict(net.model,s = bestlam ,newx = test.mat)
+MSE <- mean((pred-test$egalit_scale)^2)
+net.model
+cat('MSE for Elastic Net:',MSE)
+
+```
+
+## 4.c Principal component regression
+```{r}
+library(pls)
+pcr_model <- pcr(egalit_scale~., data = train.num, scale = TRUE, validation = "CV")
+validationplot(pcr_model,val.type = 'MSEP',
+               main = 'PCR Model and its MSE (4.c)',
+               ylab = 'MSE by cross-validation')
+summary(pcr_model)
+```
+Diagram 4.c shows that when the number of components is 7, the model generate the best result.
+
+```{r}
+pcr.pred=predict(pcr_model,test.num,ncomp=7) 
+cat('MSE for PCR:',mean((pred-test$egalit_scale)^2))
+```
+
+## 4.d Partial least squares regression
+
+```{r}
+library(pls)
+pls_model <- plsr(egalit_scale~., data = train.num, scale = TRUE, validation = "CV")
+validationplot(pls_model,val.type = 'MSEP',
+               main = 'PLSR Model and its MSE (4.d)',
+               ylab = 'MSE by cross-validation')
+summary(pls_model)
+```
+Diagram 4.d shows that when the number of components is 2, the model generate the best result.
+
+```{r}
+pls.pred=predict(pls_model,test.num,ncomp=2) 
+cat('MSE for PLS:',mean((pred-test$egalit_scale)^2))
+```
+
+
+In question 4, MSE values for all models are in the range of 84-86, which are not significantly different from each other. Thus, I do think these four models' performances are approximately equal. 
+
+# Question 5
+
+## 5.1  Linear regression
+```{r}
+library(vip)
+library(pdp)
+library(devtools)
+library(iml)
+
+features = train.num %>% dplyr::select(-egalit_scale)
+response = as.numeric(as.vector(train.num$egalit_scale))
+predictor.lm = Predictor$new(model = lm.fit,data = features, y=response)
+plot(Interaction$new(predictor.lm))
+```
+## 5.2 Elastic Net
+```{r}
+vip(net.model)
+```
+## 5.3 PCR
+```{r}
+predictor.pcr = Predictor$new(model = pcr_model,data = features, y=response)
+plot(Interaction$new(predictor.pcr))
+```
+## 5.4 PLS
+```{r}
+predictor.pls = Predictor$new(model = pls_model,data = features, y=response)
+plot(Interaction$new(predictor.pls))
+```
+
+Based on diagrams above, the most importance features for each models are:
+Linear regression: income06,tolerance,child
+Elastic net regression: income06, tolerance, child
+Principal component regression (for ncomps =7): tvhours,income06,con_govt 
+Partial least squares regression (for ncomps = 2): wordsum, tolerance, income06
+
+The above results show that income06, tolerance and child are most significant features of the model, I think I get these results because I failed to perform feature standardization.
